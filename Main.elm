@@ -4,6 +4,7 @@ import Random exposing (..)
 import Array exposing (..)
 import Maybe exposing (..)
 import Html exposing (..)
+import Html.Events exposing (onClick)
 
 main =
   Html.program
@@ -17,14 +18,17 @@ main =
 -- UPDATE
 
 type alias Point = { x:Int, y:Int }
+type alias Color = String
+
 
 type Msg
   = PickPoints (List Point)
   | DrawGraph (List Point) 
+  | RunKmeans
 
 randomPoints : Generator (List(Point))
 randomPoints = 
-  Random.list 200 (Random.map (\(x, y) -> Point x y) (Random.pair (int 1 999) (int 1 499)))
+  Random.list 200 (Random.map (\(x, y) -> Point x y) (Random.pair (int 1 999) (int 1 399)))
 
 defaultPoint : Point
 defaultPoint =
@@ -77,7 +81,8 @@ update msg model =
       ({model| points = points }, (Random.generate DrawGraph (randomElements model.k points)))
     DrawGraph centroids ->
       ({model | centroids = centroids, clusters = (groupIntoClusters model.points centroids) }, Cmd.none)
-      -- ({model | centroids = centroids }, Cmd.none)
+    RunKmeans ->
+      (model, Cmd.none)
 
 -- MODEL
 
@@ -95,20 +100,31 @@ type alias Model =
 
 init : (Model, Cmd Msg)
 init =
-  (Model [] [] [] 4, (Random.generate PickPoints randomPoints))
+  (Model [] [] [] 6, (Random.generate PickPoints randomPoints))
 
 -- VIEW
 
 view model =
-    svg
-    [version "1.1", x "0", y "0", viewBox "0 0 1000 500"]
-    (List.map (renderPoint model.centroids) model.points)
+    Html.div []
+      [
+        (svg
+        [version "1.1", x "0", y "0", viewBox "0 0 1000 400"]
+      -- (List.map (renderPoint red) model.points)
+        (renderCluster model.clusters))
+      , Html.button [onClick RunKmeans] [Html.text "Run k-means"]
+      ]
 
-renderPoint centroids p =
-  let 
-    color = if List.member p centroids then "red" else "blue"
-  in  
-    circle [ cx (toString p.x), cy (toString p.y), r "2", fill color ] []
+renderCluster clusters =
+  (List.map2 (\color cluster -> List.map (renderPoint color 2) cluster.points) clusterColors clusters)
+  |> List.concat
+  |> List.append (List.map2 (\color cluster -> renderPoint color 4 cluster.centroid) clusterColors clusters)
+
+clusterColors : List Color
+clusterColors =
+  ["red", "range", "yellow", "green", "purple", "brown"]
+
+renderPoint color size p =
+ circle [ cx (toString p.x), cy (toString p.y), r (toString size), fill color ] []
 
 
 -- SUBSCRIPTIONS
