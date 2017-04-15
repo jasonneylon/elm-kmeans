@@ -5,6 +5,7 @@ import Array exposing (..)
 import Maybe exposing (..)
 import Html exposing (..)
 import Html.Events exposing (onClick)
+import Time exposing (Time, second)
 
 main =
   Html.program
@@ -14,17 +15,16 @@ main =
     , subscriptions = subscriptions
     }
 
-
 -- UPDATE
 
 type alias Point = { x:Int, y:Int }
 type alias Color = String
 
-
 type Msg
   = PickPoints (List Point)
   | DrawGraph (List Point) 
   | RunKmeans
+  | NextRunTick Time
 
 randomPoints : Generator (List(Point))
 randomPoints = 
@@ -48,6 +48,14 @@ randomElements k points =
 distance : Point -> Point -> Float
 distance a b = 
   sqrt (toFloat (((a.x - b.x) ^ 2) + ((a.y - b.y) ^ 2)))
+
+mean: List Int -> Int
+mean numbers =
+  (numbers |> List.sum |> toFloat) / (numbers |> List.length |> toFloat) |> round
+
+meanPoint : List Point -> Point
+meanPoint points = 
+  { x = (List.map .x points) |> mean, y = (List.map .y points) |> mean } 
 
 closestCentroid : Point -> List(Point) -> Point
 closestCentroid point centroids = 
@@ -74,15 +82,34 @@ groupIntoClusters points centroids =
   in
     List.map (groupIntoCentroidAndPoints pointsAndClosestCentroid) centroids
 
+pointsFromClusters : List Cluster -> List (List Point)
+pointsFromClusters clusters =
+ List.map (\c -> c.points) clusters
+  
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
   case msg of
     PickPoints points ->
       ({model| points = points }, (Random.generate DrawGraph (randomElements model.k points)))
     DrawGraph centroids ->
-      ({model | centroids = centroids, clusters = (groupIntoClusters model.points centroids) }, Cmd.none)
+      ({model | clusters = (groupIntoClusters model.points centroids) }, Cmd.none)
     RunKmeans ->
-      (model, Cmd.none)
+      -- (model, Cmd.none)
+      ({model | clusters = (updateCluster model.points model.clusters), running = True, runs = 0 }, Cmd.none)
+    NextRunTick time ->
+      -- (model, Cmd.none)
+      if model.running then
+        ({model | clusters = (updateCluster model.points model.clusters), runs = model.runs + 1 }, Cmd.none)
+      else
+        (model,  Cmd.none)
+
+
+updateCluster : List Point -> List Cluster -> List Cluster
+updateCluster points clusters =
+  let
+    newCentroids = (List.map meanPoint (pointsFromClusters clusters))
+  in 
+    (groupIntoClusters points newCentroids) 
 
 -- MODEL
 
@@ -93,25 +120,28 @@ type alias Cluster =
 
 type alias Model =
   { points : List(Point)
-  , centroids : List(Point)
   , clusters : List(Cluster)
   , k : Int
+  , runs : Int
+  , running : Bool
   }
 
 init : (Model, Cmd Msg)
 init =
-  (Model [] [] [] 6, (Random.generate PickPoints randomPoints))
+  (Model [] [] 6 0 False, (Random.generate PickPoints randomPoints))
 
 -- VIEW
 
 view model =
     Html.div []
       [
-        (svg
+        Html.h1 [] [Html.text "K-means"]
+      , (svg
         [version "1.1", x "0", y "0", viewBox "0 0 1000 400"]
       -- (List.map (renderPoint red) model.points)
         (renderCluster model.clusters))
       , Html.button [onClick RunKmeans] [Html.text "Run k-means"]
+      , span [] [Html.text (" Iteration: " ++ toString (model.runs))]
       ]
 
 renderCluster clusters =
@@ -132,6 +162,4 @@ renderPoint color size p =
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
-  Sub.none
-
-
+  Time.every second NextRunTick
