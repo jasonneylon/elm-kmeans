@@ -7,6 +7,7 @@ import Html exposing (..)
 import Html.Events exposing (onClick)
 import Time exposing (Time, second)
 
+main : Program Never Model Msg
 main =
   Html.program
     { init = init
@@ -21,9 +22,9 @@ type alias Point = { x:Int, y:Int }
 type alias Color = String
 
 type Msg
-  = PickPoints (List Point)
-  | DrawGraph (List Point) 
-  | RunKmeans
+  = DrawPoints (List Point)
+  | PickCentroidsAndRunKmeans 
+  | RunKmeans (List Point)
   | NextRunTick Time
 
 randomPoints : Generator (List(Point))
@@ -84,32 +85,41 @@ groupIntoClusters points centroids =
 
 pointsFromClusters : List Cluster -> List (List Point)
 pointsFromClusters clusters =
- List.map (\c -> c.points) clusters
+  List.map (\c -> c.points) clusters
   
+clustersFromCentroids : List Point -> List Cluster
+clustersFromCentroids centroids = 
+  List.map2 Cluster centroids (List.repeat (List.length centroids) [])
+
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
   case msg of
-    PickPoints points ->
-      ({model| points = points }, (Random.generate DrawGraph (randomElements model.k points)))
-    DrawGraph centroids ->
-      ({model | clusters = (groupIntoClusters model.points centroids) }, Cmd.none)
-    RunKmeans ->
-      -- (model, Cmd.none)
-      ({model | clusters = (updateCluster model.points model.clusters), running = True, runs = 0 }, Cmd.none)
+    DrawPoints points ->
+      ({model| points = points }, Cmd.none) 
+    PickCentroidsAndRunKmeans ->
+      (model, (Random.generate RunKmeans (randomElements model.k model.points)))
+    RunKmeans centroids ->
+      ({model | iterations = 0, clusters = clustersFromCentroids centroids, running = True }, Cmd.none)
     NextRunTick time ->
-      -- (model, Cmd.none)
-      if model.running then
-        ({model | clusters = (updateCluster model.points model.clusters), runs = model.runs + 1 }, Cmd.none)
+      if model.running && model.iterations < 20 then
+        ({model | clusters = (runKmeans model.points model.clusters model.iterations), iterations = model.iterations + 1}, Cmd.none)
       else
         (model,  Cmd.none)
 
 
-updateCluster : List Point -> List Cluster -> List Cluster
-updateCluster points clusters =
+updateClusters : List Point -> List Cluster -> List Cluster
+updateClusters points clusters =
   let
     newCentroids = (List.map meanPoint (pointsFromClusters clusters))
   in 
     (groupIntoClusters points newCentroids) 
+
+runKmeans : List Point -> List Cluster -> Int -> List Cluster
+runKmeans points clusters iteration = 
+  if iteration == 0 then
+     groupIntoClusters points (List.map .centroid clusters)
+   else
+     updateClusters points clusters
 
 -- MODEL
 
@@ -122,13 +132,13 @@ type alias Model =
   { points : List(Point)
   , clusters : List(Cluster)
   , k : Int
-  , runs : Int
+  , iterations : Int
   , running : Bool
   }
 
 init : (Model, Cmd Msg)
 init =
-  (Model [] [] 6 0 False, (Random.generate PickPoints randomPoints))
+  (Model [] [] 6 0 False, (Random.generate DrawPoints randomPoints))
 
 -- VIEW
 
@@ -139,26 +149,36 @@ view model =
       , (svg
         [version "1.1", x "0", y "0", viewBox "0 0 1000 400"]
       -- (List.map (renderPoint red) model.points)
-        (renderCluster model.clusters))
-      , Html.button [onClick RunKmeans] [Html.text "Run k-means"]
-      , span [] [Html.text (" Iteration: " ++ toString (model.runs))]
+        (renderGraph model.points model.clusters))
+      , Html.button [onClick PickCentroidsAndRunKmeans] [Html.text "Run k-means"]
+      , span [] [Html.text (" Iteration: " ++ toString (model.iterations))]
       ]
 
-renderCluster clusters =
-  (List.map2 (\color cluster -> List.map (renderPoint color 2) cluster.points) clusterColors clusters)
-  |> List.concat
-  |> List.append (List.map2 (\color cluster -> renderPoint color 4 cluster.centroid) clusterColors clusters)
+renderGraph points clusters = 
+    renderPoints points ++ renderClusters clusters ++  renderCentroids clusters 
+
+renderCentroids : List(Cluster) -> List (Svg msg)
+renderCentroids clusters =
+  List.map2 (\color cluster -> renderPoint color 4 cluster.centroid) clusterColors clusters
+
+renderPoints : List(Point) -> List (Svg msg)
+renderPoints points = 
+  List.map (renderPoint "black" 2) points
+ 
+renderClusters : List(Cluster) -> List (Svg msg)
+renderClusters clusters =
+  List.concat (List.map2 (\color cluster -> List.map (renderPoint color 2) cluster.points) clusterColors clusters)
 
 clusterColors : List Color
 clusterColors =
   ["red", "range", "yellow", "green", "purple", "brown"]
 
+renderPoint : Color -> Int -> Point -> Svg msg
 renderPoint color size p =
  circle [ cx (toString p.x), cy (toString p.y), r (toString size), fill color ] []
 
 
 -- SUBSCRIPTIONS
-
 
 subscriptions : Model -> Sub Msg
 subscriptions model =
