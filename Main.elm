@@ -1,10 +1,11 @@
-import Svg exposing (..)
+import Svg exposing (circle, svg, Svg)
 import Svg.Attributes exposing (..)
 import Random exposing (..)
 import Array exposing (..)
 import Maybe exposing (..)
 import Html exposing (..)
-import Html.Events exposing (onClick)
+import Html.Events exposing (onClick, onInput)
+import Html.Attributes exposing (value, type_)
 import Time exposing (Time, second)
 
 main : Program Never Model Msg
@@ -26,6 +27,7 @@ type Msg
   | PickCentroidsAndRunKmeans 
   | RunKmeans (List Point)
   | NextRunTick Time
+  | ChangeK String
 
 randomPoints : Generator (List(Point))
 randomPoints = 
@@ -96,6 +98,8 @@ update msg model =
   case msg of
     DrawPoints points ->
       ({model| points = points }, Cmd.none) 
+    ChangeK newk ->
+      ({model| k = (Result.withDefault model.k (String.toInt newk)) }, Cmd.none) 
     PickCentroidsAndRunKmeans ->
       (model, (Random.generate RunKmeans (randomElements model.k model.points)))
     RunKmeans centroids ->
@@ -148,10 +152,12 @@ view model =
         Html.h1 [] [Html.text "K-means"]
       , (svg
         [version "1.1", x "0", y "0", viewBox "0 0 1000 400"]
-      -- (List.map (renderPoint red) model.points)
         (renderGraph model.points model.clusters))
-      , Html.button [onClick PickCentroidsAndRunKmeans] [Html.text "Run k-means"]
-      , span [] [Html.text (" Iteration: " ++ toString (model.iterations))]
+      , Html.fieldset [] [
+          Html.label [] [Html.text "K: "]
+        , Html.input [Html.Attributes.type_ "number", value (toString model.k), onInput ChangeK] []
+        , Html.button [onClick PickCentroidsAndRunKmeans] [Html.text "Run"]
+        , span [] [Html.text (" Iteration: " ++ toString (model.iterations))]]
       ]
 
 renderGraph points clusters = 
