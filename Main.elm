@@ -28,6 +28,7 @@ type Msg
   | RunKmeans (List Point)
   | NextRunTick Time
   | ChangeK String
+  | ResetModel
 
 randomPoints : Generator (List(Point))
 randomPoints = 
@@ -96,6 +97,8 @@ clustersFromCentroids centroids =
 update : Msg -> Model -> (Model, Cmd Msg)
 update msg model =
   case msg of
+    ResetModel ->
+        initialModel
     DrawPoints points ->
       ({model| points = points }, Cmd.none) 
     ChangeK newk ->
@@ -105,7 +108,7 @@ update msg model =
     RunKmeans centroids ->
       ({model | iterations = 0, clusters = clustersFromCentroids centroids, running = True }, Cmd.none)
     NextRunTick time ->
-      if model.running && model.iterations < 20 then
+      if model.running && model.iterations < 10 then
         ({model | clusters = (runKmeans model.points model.clusters model.iterations), iterations = model.iterations + 1}, Cmd.none)
       else
         (model,  Cmd.none)
@@ -140,23 +143,28 @@ type alias Model =
   , running : Bool
   }
 
+initialModel : (Model, Cmd Msg)
+initialModel =
+  (Model [] [] 6 0 False, (Random.generate DrawPoints randomPoints))
+
 init : (Model, Cmd Msg)
 init =
-  (Model [] [] 6 0 False, (Random.generate DrawPoints randomPoints))
+  initialModel
 
 -- VIEW
 
 view model =
     Html.div []
       [
-        Html.h1 [] [Html.text "K-means"]
+        Html.h1 [] [Html.text "K-means in Elm"]
       , (svg
         [version "1.1", x "0", y "0", viewBox "0 0 1000 400"]
         (renderGraph model.points model.clusters))
       , Html.fieldset [] [
-          Html.label [] [Html.text "K: "]
+          Html.label [] [Html.text "K value: "]
         , Html.input [Html.Attributes.type_ "number", value (toString model.k), onInput ChangeK] []
-        , Html.button [onClick PickCentroidsAndRunKmeans] [Html.text "Run"]
+        , Html.button [onClick PickCentroidsAndRunKmeans] [Html.text "Run k-means"]
+        , Html.button [onClick ResetModel] [Html.text "Reset"]
         , span [] [Html.text (" Iteration: " ++ toString (model.iterations))]]
       ]
 
